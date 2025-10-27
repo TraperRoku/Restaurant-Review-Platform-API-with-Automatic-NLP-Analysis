@@ -1,48 +1,109 @@
-/*
-package com.inzynierka.filip.kazmierczak.restaurant_review.service;
 
+package com.inzynierka.filip.kazmierczak.restaurant_review.service;
 import com.inzynierka.filip.kazmierczak.restaurant_review.model.NlpScores;
 import com.inzynierka.filip.kazmierczak.restaurant_review.model.Restaurant;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
 
+import java.util.Collections;
+import java.util.LinkedHashMap; // Aby zachować kolejność
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
 @Service
 public class RankingService {
 
-    // Definiujemy klucze dla naszych posortowanych zbiorów w Redis
-    private static final String RANKING_STARS = "ranking:stars";
-    private static final String RANKING_NLP_FOOD = "ranking:nlp:food";
-    private static final String RANKING_NLP_PRICE = "ranking:nlp:price";
-    private static final String RANKING_NLP_SERVICE = "ranking:nlp:service";
-    private static final String RANKING_NLP_ATMOSPHERE = "ranking:nlp:atmosphere";
+    private static final Logger logger = LoggerFactory.getLogger(RankingService.class);
 
-    private final ZSetOperations<String, String> zSetOps;
 
-    // Wstrzykujemy RedisTemplate i od razu pobieramy z niego operacje na ZSet
-    public RankingService(RedisTemplate<String, String> redisTemplate) {
-        this.zSetOps = redisTemplate.opsForZSet();
+    private static final String RANKING_KEY_TRADITIONAL = "ranking:traditional";
+    private static final String RANKING_KEY_NLP = "ranking:nlp";
+
+    private final RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired
+    public RankingService(RedisTemplate<String, Object> redisTemplate) {
+        this.redisTemplate = redisTemplate;
     }
 
-    */
+
+public void updateRankings(Restaurant restaurant) {
+    if (restaurant == null || restaurant.getId() == null) {
+        logger.warn("Próba aktualizacji rankingu dla nieprawidłowej restauracji.");
+        return;
+    }
+
+    String restaurantId = restaurant.getId();
+
+    double traditionalScore = restaurant.getAvgStars();
+
+    redisTemplate.opsForZSet().add(RANKING_KEY_TRADITIONAL, restaurantId, traditionalScore);
+    logger.debug("Zaktualizowano ranking tradycyjny dla {}: {}", restaurantId, traditionalScore);
+
+
+    NlpScores nlpScores = restaurant.getAvgNlpScores();
+    double nlpScore = 0.0;
+    if (nlpScores != null) {
+
+        nlpScore = (nlpScores.getFoodScore() + nlpScores.getPriceScore() +
+                nlpScores.getServiceScore() + nlpScores.getAtmosphereScore()) / 4.0;
+    }
+
+    redisTemplate.opsForZSet().add(RANKING_KEY_NLP, restaurantId, nlpScore);
+    logger.debug("Zaktualizowano ranking NLP dla {}: {}", restaurantId, nlpScore);
+}
+
 /**
-     * Aktualizuje pozycję restauracji we wszystkich rankingach w Redis.
-     * Używa ID restauracji jako 'value' i średniej oceny jako 'score'.
-     *//*
-
-    public void updateRankings(Restaurant restaurant) {
-        String restaurantId = restaurant.getId();
-        NlpScores nlpScores = restaurant.getAvgNlpScores();
-
-        // Aktualizuj ranking gwiazdkowy
-        zSetOps.add(RANKING_STARS, restaurantId, restaurant.getAvgStars());
-
-        if (nlpScores != null) {
-            zSetOps.add(RANKING_NLP_FOOD, restaurantId, nlpScores.getFoodScore());
-            zSetOps.add(RANKING_NLP_PRICE, restaurantId, nlpScores.getPriceScore());
-            // POPRAWKA:
-            zSetOps.add(RANKING_NLP_SERVICE, restaurantId, nlpScores.getServiceScore()); // <-- Poprawione
-            zSetOps.add(RANKING_NLP_ATMOSPHERE, restaurantId, nlpScores.getAtmosphereScore());
-        }
+ * Pobiera TOP N restauracji z rankingu (tradycyjnego lub NLP).
+ *
+ * @param type Typ rankingu ("traditional" lub "nlp").
+ * @param topN Liczba restauracji do pobrania (np. 10).
+ * @return Mapa, gdzie kluczem jest ID restauracji, a wartością jej wynik w rankingu.
+ * Mapa jest posortowana od najwyższego wyniku.
+ */
+public Map<String, Double> getTopRankedRestaurants(String type, int topN) {
+    String key;
+    if ("nlp".equalsIgnoreCase(type)) {
+        key = RANKING_KEY_NLP;
+    } else {
+        key = RANKING_KEY_TRADITIONAL; // Domyślnie tradycyjny
     }
-}*/
+
+    // ZREVRANGE key 0 (topN - 1) WITHSCORES
+    // Pobieramy ID restauracji (member) i ich wyniki (score)
+    // reverseRangeWithScores zwraca od najwyższego do najniższego wyniku
+    Set<ZSetOperations.TypedTuple<Object>> results = redisTemplate.opsForZSet()
+            .reverseRangeWithScores(key, 0, topN - 1);
+
+    if (results == null || results.isEmpty()) {
+        return Collections.emptyMap(); // Zwróć pustą mapę, jeśli ranking jest pusty
+    }
+
+    // Konwertujemy wyniki na mapę <ID, Wynik> zachowującą kolejność
+    return results.stream()
+            .collect(Collectors.toMap(
+                    tuple -> (String) tuple.getValue(), // ID restauracji
+                    ZSetOperations.TypedTuple::getScore, // Wynik
+                    (oldValue, newValue) -> oldValue, // W razie duplikatów (nie powinno być)
+                    LinkedHashMap::new // Używamy LinkedHashMap, aby zachować kolejność
+            ));
+}
+
+/**
+ * Usuwa restaurację z rankingów (np. gdy restauracja jest usuwana).
+ *
+ * @param restaurantId ID restauracji do usunięcia.
+ */
+public void removeRestaurantFromRankings(String restaurantId) {
+    if (restaurantId == null) return;
+    // ZREM key member
+    redisTemplate.opsForZSet().remove(RANKING_KEY_TRADITIONAL, restaurantId);
+    redisTemplate.opsForZSet().remove(RANKING_KEY_NLP, restaurantId);
+    logger.info("Usunięto restaurację {} z rankingów Redis.", restaurantId);
+}
+}

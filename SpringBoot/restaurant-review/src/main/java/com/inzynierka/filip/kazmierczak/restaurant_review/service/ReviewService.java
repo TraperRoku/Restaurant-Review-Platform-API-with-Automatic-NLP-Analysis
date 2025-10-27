@@ -21,18 +21,17 @@ public class ReviewService {
     private final ReviewRepository reviewRepository;
     private final RestaurantRepository restaurantRepository;
     private final NlpService nlpService;
-  //  private final RankingService rankingService;
+    private final RankingService rankingService;
 
     // Wstrzykujemy wszystkie 4 zależności
     public ReviewService(ReviewRepository reviewRepository,
                          RestaurantRepository restaurantRepository,
-                         NlpService nlpService
-                         //RankingService rankingService
+                         NlpService nlpService, RankingService rankingService
                          ) {
         this.reviewRepository = reviewRepository;
         this.restaurantRepository = restaurantRepository;
         this.nlpService = nlpService;
-      //  this.rankingService = rankingService;
+        this.rankingService = rankingService;
     }
 
     /**
@@ -131,7 +130,7 @@ public class ReviewService {
         logger.info("Zaktualizowano średnie oceny dla restauracji: {}", restaurant.getId());
 
         // 6. Zaktualizuj rankingi w Redis
-       // rankingService.updateRankings(restaurant);
+         rankingService.updateRankings(restaurant);
         logger.info("Zaktualizowano rankingi w Redis dla restauracji: {}", restaurant.getId());
     }
 }

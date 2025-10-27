@@ -1,6 +1,6 @@
 """
 GENERATOR DANYCH ABSA v1.0
-- Cel: 20 000 próbek (1750 syntet. + 250 ręcznych)
+- Cel: 20 000 próbek (19750 syntet. + 250 ręcznych)
 - Strategia hybrydowa (60% B / 40% A)
 
 """
@@ -283,7 +283,6 @@ CONNECTORS = {
     "contrast": ["jednak", "mimo to", "chociaż", "niestety"]
 }
 
-# Ręczne przykłady - PO ZAKTUALIZOWANIU O NOWE 20 PRÓBEK
 MANUAL_EXAMPLES = [
     {"text": "Jedzenie było niesamowite, ale 40 zł za małą porcję to przesada. Muszę przyznać, że wystrój jest na plus.",
      "labels": {"jedzenie": 5, "cena": 1, "obsługa": 3, "atmosfera": 4}},
